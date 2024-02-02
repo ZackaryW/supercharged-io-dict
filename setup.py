@@ -3,7 +3,7 @@ from setuptools import setup
 setup(
     name="sioDict",
     description="A simple implementation of dict with io : runtime sync",
-    version="0.1",
+    version="0.1.1",
     packages=["sioDict", "sioDict.variants"],
     license="MIT",
     long_description=open("README.md").read(),

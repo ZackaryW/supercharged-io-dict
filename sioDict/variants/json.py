@@ -9,7 +9,7 @@ class JsonDict(IoDict):
             self.update(data)
 
     def save(self):
-        with open(self.path, 'wb') as f:
+        with open(self.path, 'w') as f:
             json.dump(self, f, indent=4)
                   
     def touch(self):
