@@ -55,7 +55,6 @@ def iterTypeMapping(
             yield mapping[keys[index]], keys[index]
             
         index += 1
-            
 
 def setDeep(
     d : dict, 
@@ -65,7 +64,7 @@ def setDeep(
     ] = dict
 ):
     if len(keysAndValue) == 0:
-        return
+        raise KeyError("no keys passed in")
     
     if len(keysAndValue) == 1:
         raise KeyError("only 1 key passed in, missing value")
@@ -81,30 +80,39 @@ def setDeep(
         target = target[key]
     
     target[keysAndValue[-2]] = keysAndValue[-1]
-    
-defaultObj = object()
 
-def setDefaultDeep(
-    d : dict, 
-    *keys,
-    default = defaultObj,
-    expandMapping : typing.Union[
-        type, typing.List[typing.Tuple[typing.Type, int]], typing.Dict[str, typing.Type]
-    ] = dict
-):
-    if len(keys) == 0:
-        return
-    
-    if len(keys) == 1:
-        d[keys[0]] = keys[0]
-        return
-    
+def setDeepSimple(d, *keysAndValue):
+    if len(keysAndValue) < 2:
+        raise ValueError("At least one key and one value are required")
+
+    # Navigate through the keys, stopping before the last key to set the value
     target = d
-    for stype, key in iterTypeMapping(keys[:-1], expandMapping):
-        if key not in target:
-            target[key] = stype()
-        target = target[key]
-    
-    if keys[-1] not in target:
-        target[keys[-1]] = default
+    for i, key in enumerate(keysAndValue[:-2]):  # Iterate until the penultimate item
+        next_key = keysAndValue[i+1]  # Look ahead to the next key to determine the required type
 
+        if isinstance(key, int):  # Current key is an integer, so we expect a list at this level
+            # Ensure the target is a list and is long enough
+            while isinstance(target, dict) and key in target and not isinstance(target[key], list):
+                target[key] = [target[key]]  # Convert to list if necessary
+            if not isinstance(target, list):
+                raise TypeError(f"Expected list at key '{key}' but found a dict.")
+            while len(target) <= key:
+                target.append({})
+            target = target[key]
+        else:  # Current key is not an integer, we expect a dict at this level
+            if key not in target or not isinstance(target[key], (dict, list)):
+                # Initialize the correct type based on the next key
+                target[key] = [] if isinstance(next_key, int) else {}
+            target = target[key]
+
+    # Set the value for the last key
+    final_key = keysAndValue[-2]
+    if isinstance(final_key, int):  # Final key is an integer, prepare a list if necessary
+        # Ensure the target is a list and is long enough
+        if not isinstance(target, list):
+            target = [target]  # Convert existing value to list
+        while len(target) <= final_key:
+            target.append(None)
+        target[final_key] = keysAndValue[-1]
+    else:  # Final key is not an integer, simply set the value in a dict
+        target[final_key] = keysAndValue[-1]

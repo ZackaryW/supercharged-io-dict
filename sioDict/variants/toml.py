@@ -1,18 +1,20 @@
 
-from sioDict.base import IoDict
+from sioDict.wrapper import SioWrapper
+
 import toml
 
-class TomlDict(IoDict):
+class TomlSioDict(SioWrapper):
+    @staticmethod
+    def _save(d, path : str):
+        with open(path, 'w') as f:
+            toml.dump(d, f)
 
-    def load(self):
-        data = toml.load(self.path)
-        self.update(data)
-
-    def save(self):
-        with open(self.path, 'wb') as f:
-            toml.dump(self, f)
-                  
-    def touch(self):
-        with open(self.path, 'a'):
-            pass
-                  
+    @staticmethod
+    def _load(path : str):
+        with open(path, 'r') as f:
+            return toml.load(f)
+        
+    @staticmethod
+    def _clear(path : str):
+        with open(path, 'w') as f:
+            f.write("")
