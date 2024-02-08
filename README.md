@@ -31,3 +31,6 @@ d["a"] = {
 
 # License
 MIT
+
+# Acknowledgements
+- Peter Wendl 
