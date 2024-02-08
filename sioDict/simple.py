@@ -20,7 +20,8 @@ class OneLayerDict(dict):
                 data = json.load(f)
                 self.update(data)
         except (FileNotFoundError, json.JSONDecodeError):
-            pass
+            with open(self.filename, 'w') as f:
+                json.dump(self, f)
 
     def __setitem__(self, key, value):
         super().__setitem__(key, value)
@@ -75,7 +76,8 @@ class OneLayerList(list):
                 self.clear()  # Clear existing list before loading
                 self.extend(data)
         except (FileNotFoundError, json.JSONDecodeError):
-            pass
+            with open(self.filename, 'w') as f:
+                json.dump(self, f)
 
     def append(self, item):
         super().append(item)
