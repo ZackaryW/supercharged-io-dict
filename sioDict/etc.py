@@ -16,7 +16,13 @@ def getDeep(
         return d.get(keys[0], default)
     
     for key in keys[:-1]:
-        if key not in d:
+        if (
+                key not in d and isinstance(d, dict
+            )
+            or (
+                isinstance(d, list) and key >= len(d)
+            )
+        ):
             if options & ExtOptions.raiseOnError:
                 raise KeyError(key)
             elif options & ExtOptions.returnClosest:
@@ -116,3 +122,20 @@ def setDeepSimple(d, *keysAndValue):
         target[final_key] = keysAndValue[-1]
     else:  # Final key is not an integer, simply set the value in a dict
         target[final_key] = keysAndValue[-1]
+    
+def setDefault(
+    d : dict,
+    *keys,
+    default,
+    expandMapping : typing.Union[
+        type, typing.List[typing.Tuple[typing.Type, int]], typing.Dict[str, typing.Type]
+    ] = dict,
+    useSimple : bool = False
+):
+    try:
+        getDeep(d, *keys, options=ExtOptions.raiseOnError)
+    except KeyError:
+        if useSimple:
+            setDeepSimple(d, *keys, default)
+        else:
+            setDeep(d, *keys, expandMapping=expandMapping, default=default)

@@ -36,6 +36,7 @@ from contextlib import contextmanager
 import os
 import typing
 import orjson
+from sioDict.etc import ExtOptions, getDeep, setDeep, setDeepSimple
 
 # -------------------------------------------------------------------------------------------------------- Shared Capabilities
 # The callback method for nested objects. 
@@ -396,30 +397,14 @@ class NestedList(list, ChildConverter, ParentCaller):
 
 
 # -------------------------------------------------------------------------------------------------------- SioBase Class
-class SioBase(dict, ChildConverter, DictUpdater):
-    '''
-    A dict subclass that observes a nested dict and listens for changes in its data 
-    structure. If a data change is registered, reacts with a callback 
-    or a data-export to a JSON file.
-
-    Automatically write data to a JSON file, when the nested data structure changes (optional)
-    Throw a callback method, when the nested data structure changes (optional)
-
-    Behaves like a regular dict and supports all dict and list methods like pop(), append(), slice()...
-    Supports nesting of all possible datatypes like dict, list, tuple, set and other objects like custom classes.
-    Writing data to a file will encode a non-serializable object to a binary-string.
-    Reading data from a file will decode a binary-string back to a non-serializable object.
-    You can import additional data from json files.
-    You can export data to json files.
-    '''
-        
+class SioBase(ChildConverter):
     def __init__(self, *args, **kwargs):
         self.path = None
         self.prevStamp = None
         self.callback = None
         self.callback_args = None
         self.callback_kwargs = None
-        self.update(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.loadMethod : typing.Callable = None
         self.saveMethod : typing.Callable= None
         self.clearMethod : typing.Callable = None
@@ -437,6 +422,63 @@ class SioBase(dict, ChildConverter, DictUpdater):
                 if hasattr(self, 'path') and self.path:
                     self.saveMethod(self, self.path)
 
+   
+    def bind(self, callback, response=None, *args, **kwargs):
+        '''Set the callback function'''
+        self.callback = callback
+        self.response = response
+        self.callback_args = args
+        self.callback_kwargs = kwargs
+
+    def syncFile(self, path, reset=False):
+        '''Set the sync file path. Set reset=True if you want to reset the data in the file on startup. Default is False'''
+        self.path = path
+        if reset or not os.path.exists(path):
+            self.clearMethod(path)
+        data = self.loadMethod(path)
+
+        # update
+        return data
+    
+    def importFile(self, path, ignoreError=False):
+        '''Insert/Import data from a file.'''
+        if os.path.exists(path):
+            data = self.loadMethod(path)
+            return data
+            # update
+        else:
+            if ignoreError:
+                return
+            raise FileNotFoundError("importFile: File '{}' does not exist.".format(path))
+    
+    def removeFile(self, path, ignoreError=False):
+        '''Delete a file. Use with care'''
+        if os.path.exists(path):
+            os.remove(path)
+        else:
+            if ignoreError:
+                return
+            raise FileNotFoundError("removeFile: File '{}' does not exist.".format(path))
+        
+    #ANCHOR misc
+    def setDeep(
+        self,
+        *keysAndValue,
+        expandMapping : typing.Union[
+            type, typing.List[typing.Tuple[typing.Type, int]], typing.Dict[str, typing.Type]
+        ] = dict
+    ):
+        with self.saveLock():
+            setDeep(self, *keysAndValue, expandMapping=expandMapping)
+
+    def getDeep(
+        self,
+        *keys,
+        default = None,
+        options : int = 0
+    ):
+        return getDeep(self, *keys, default=default, options=options)
+    
     def __call_from_child__(self, modified_object, modify_info, modify_trace):
         self.currentStamp = orjson.dumps(self)
         if self.currentStamp != self.prevStamp:
@@ -449,8 +491,41 @@ class SioBase(dict, ChildConverter, DictUpdater):
                         self.callback(*self.callback_args, **self.callback_kwargs)
             self.prevStamp = self.currentStamp
 
+class SioBaseDict(dict, SioBase, DictUpdater):
+    '''
+    A dict subclass that observes a nested dict and listens for changes in its data 
+    structure. If a data change is registered, reacts with a callback 
+    or a data-export to a JSON file.
+
+    Automatically write data to a JSON file, when the nested data structure changes (optional)
+    Throw a callback method, when the nested data structure changes (optional)
+
+    Behaves like a regular dict and supports all dict and list methods like pop(), append(), slice()...
+    Supports nesting of all possible datatypes like dict, list, tuple, set and other objects like custom classes.
+    Writing data to a file will encode a non-serializable object to a binary-string.
+    Reading data from a file will decode a binary-string back to a non-serializable object.
+    You can import additional data from json files.
+    You can export data to json files.
+    '''
+        
+    def __init__(self, *args, **kwargs):
+        SioBase.__init__(self)
+        dict.__init__(self)
+        self.update(*args, **kwargs)
+
+    def __getitem__(self, __key):
+        if isinstance(__key, tuple):
+            return getDeep(self, *__key,  options=ExtOptions.raiseOnError)
+        else:
+            return super(SioBaseDict, self).__getitem__(__key)
+
     def __setitem__(self, key, val):
-        super(SioBase, self).__setitem__(key, self.__convert_child__(val))
+        cval = self.__convert_child__(val)
+        if isinstance(key, tuple):
+            return setDeepSimple(self, *key, cval)
+        else:
+            super(SioBaseDict, self).__setitem__(key, cval)
+
         if hasattr(self, 'callback') and self.callback:
             if self.response:
                 modify_info = {
@@ -466,7 +541,7 @@ class SioBase(dict, ChildConverter, DictUpdater):
             pass
 
     def __delitem__(self, key):
-        super(SioBase, self).__delitem__(key)
+        super(SioBaseDict, self).__delitem__(key)
         if self.response:
             modify_info = {
                 "type": type(self),
@@ -478,7 +553,7 @@ class SioBase(dict, ChildConverter, DictUpdater):
             self.callback(*self.callback_args, **self.callback_kwargs)
 
     def clear(self):
-        super(SioBase, self).clear()
+        super(SioBaseDict, self).clear()
         if self.response:
             modify_info = {
                 "type": type(self),
@@ -489,7 +564,7 @@ class SioBase(dict, ChildConverter, DictUpdater):
             self.callback(*self.callback_args, **self.callback_kwargs)
 
     def pop(self, key):
-        r = super(SioBase, self).pop(key)
+        r = super(SioBaseDict, self).pop(key)
         if self.response:
             modify_info = {
                 "type": type(self),
@@ -502,7 +577,7 @@ class SioBase(dict, ChildConverter, DictUpdater):
         return r
 
     def popitem(self, key):
-        r = super(SioBase, self).popitem(key)
+        r = super(SioBaseDict, self).popitem(key)
         if self.response:
             modify_info = {
                 "type": type(self),
@@ -515,7 +590,7 @@ class SioBase(dict, ChildConverter, DictUpdater):
         return r
     
     def setdefault(self, key, default=None):
-        r = super(SioBase, self).setdefault(key, default=default)
+        r = super(SioBaseDict, self).setdefault(key, default=default)
         if self.response:
             modify_info = {
                 "type": type(self),
@@ -541,22 +616,14 @@ class SioBase(dict, ChildConverter, DictUpdater):
 
     def syncFile(self, path, reset=False):
         '''Set the sync file path. Set reset=True if you want to reset the data in the file on startup. Default is False'''
-        self.path = path
-        if reset or not os.path.exists(path):
-            self.clearMethod(path)
-        data = self.loadMethod(path)
+        data = super(SioBaseDict, self).syncFile(path, reset)
         self.update(**data)
-        return data
-    
+
     def importFile(self, path, ignoreError=False):
         '''Insert/Import data from a file.'''
-        if os.path.exists(path):
-            data = self.loadMethod(path)
+        data = super(SioBaseDict, self).importFile(path, ignoreError)
+        if data:
             self.update(**data)
-        else:
-            if ignoreError:
-                return
-            raise FileNotFoundError("importFile: File '{}' does not exist.".format(path))
     
     def importData(self, *args, **kwargs):
         '''
@@ -578,3 +645,51 @@ class SioBase(dict, ChildConverter, DictUpdater):
                 return
             raise FileNotFoundError("removeFile: File '{}' does not exist.".format(path))
         
+class SioBaseList(list, SioBase, ChildConverter):
+    def __init__(self, *args):
+        SioBase.__init__(self)  # Assuming SioBase does not require arguments
+        list.__init__(self)
+        if args:
+            if len(args) == 1 and isinstance(args[0], typing.Iterable):
+                self.extend(args[0])
+            else:
+                self.extend(args)
+
+    def __setitem__(self, key, value):
+        converted_value = self.__convert_child__(value)
+        super(SioBaseList, self).__setitem__(key, converted_value)
+        self.__detailed_callback(mode="setitem", key=key, value=value)
+        with self.saveLock():
+            pass
+
+    def append(self, value):
+        with self.saveLock():
+            converted_value = self.__convert_child__(value)
+            super(SioBaseList, self).append(converted_value)
+            self.__detailed_callback(mode="append", value=value)
+
+    def extend(self, iterable):
+        with self.saveLock():
+            for item in iterable:
+                self.append(item)  # Leverage the overridden append for conversion and callbacks
+
+    def insert(self, index, value):
+        with self.saveLock():
+            converted_value = self.__convert_child__(value)
+            super(SioBaseList, self).insert(index, converted_value)
+            self.__detailed_callback(mode="insert", index=index, value=value)
+
+    def __detailed_callback(self, mode, key=None, value=None, index=None, values=None):
+        if hasattr(self, 'callback') and self.callback:
+            if hasattr(self, 'response') and self.response:
+                modify_info = {
+                    "type": type(self),
+                    "mode": mode,
+                    "key": key,
+                    "value": value,
+                    "index": index,
+                    "values": values
+                }
+                self.call_to_parent(modified_object=self, modify_info=modify_info, modify_trace=[self], *self.callback_args, **self.callback_kwargs)
+            else:
+                self.callback(*self.callback_args, **self.callback_kwargs)

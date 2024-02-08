@@ -52,3 +52,52 @@ class OneLayerDict(dict):
         if key not in self:
             self[key] = default
         return self[key]
+    
+
+class OneLayerList(list):
+    """
+    This class is a subclass of the list class and provides 
+    additional functionality for saving and loading a list to/from a file.
+    """
+    def __init__(self, filename, *args, **kwargs):
+        self.filename = filename
+        super().__init__(*args, **kwargs)
+        self._load()
+
+    def _save(self):
+        with open(self.filename, 'w') as f:
+            json.dump(self, f)
+
+    def _load(self):
+        try:
+            with open(self.filename, 'r') as f:
+                data = json.load(f)
+                self.clear()  # Clear existing list before loading
+                self.extend(data)
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass
+
+    def append(self, item):
+        super().append(item)
+        self._save()
+
+    def extend(self, iterable):
+        super().extend(iterable)
+        self._save()
+
+    def insert(self, index, item):
+        super().insert(index, item)
+        self._save()
+
+    def remove(self, item):
+        super().remove(item)
+        self._save()
+
+    def pop(self, index=-1):
+        item = super().pop(index)
+        self._save()
+        return item
+
+    def clear(self):
+        super().clear()
+        self._save()
