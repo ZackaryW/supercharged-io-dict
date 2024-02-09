@@ -46,6 +46,27 @@ class ParentCaller():
         self.parent = parent
         self.call_to_parent = call_to_parent
 
+    def setDeep(
+        self,
+        *keysAndValue,
+        expandMapping : typing.Union[
+            type, typing.List[typing.Tuple[typing.Type, int]], typing.Dict[str, typing.Type]
+        ] = None
+    ):
+        with self.saveLock():
+            if expandMapping is None:
+                return setDeepSimple(self, *keysAndValue)
+
+            setDeep(self, *keysAndValue, expandMapping=expandMapping)
+
+    def getDeep(
+        self,
+        *keys,
+        default = None,
+        options : int = 0
+    ):
+        return getDeep(self, *keys, default=default, options=options)
+
     def __call_from_child__(self, modified_object, modify_info, modify_trace):
         modify_trace.insert(0, self)
         self.parent.__call_from_child__(modified_object=modified_object, modify_info=modify_info, modify_trace=[self])
@@ -195,15 +216,26 @@ class NestedDict(dict, ChildConverter, ParentCaller, DictUpdater):
     def __init__(self, parent, call_to_parent):
         ParentCaller.__init__(self, parent, call_to_parent)
 
-    def __setitem__(self, key, val):
-        super(NestedDict, self).__setitem__(key, self.__convert_child__(val))
+    def __getitem__(self, *key):
+        if isinstance(key, tuple):
+            return getDeep(self, *key,  options=ExtOptions.raiseOnError)
+        else:
+            return super().__getitem__(key)
+
+    def __setitem__(self, index, value):
+        cval = self.__convert_child__(value)
+        if isinstance(index, tuple):
+            return setDeepSimple(self, *index, cval)
+        else:
+            super(NestedDict, self).__setitem__(index, cval)
         modify_info = {
             "type": type(self),
             "mode": "setitem",
-            "key": key,
-            "value": val
+            "key": index,
+            "value": value
         }
         self.call_to_parent(modified_object=self, modify_info=modify_info, modify_trace=[self])
+
 
     def __delitem__(self, key):
         super(NestedDict, self).__delitem__(key)
@@ -262,6 +294,12 @@ class NestedList(list, ChildConverter, ParentCaller):
     def __init__(self, parent, call_to_parent):
         ParentCaller.__init__(self, parent, call_to_parent)
 
+    def __getitem__(self, *key):
+        if isinstance(key, tuple):
+            return getDeep(self, *key,  options=ExtOptions.raiseOnError)
+        else:
+            return super().__getitem__(key)
+
     def __add__(self, item):
         super(NestedList, self).__add__(item)
         modify_info = {
@@ -291,7 +329,12 @@ class NestedList(list, ChildConverter, ParentCaller):
         self.call_to_parent(modified_object=self, modify_info=modify_info, modify_trace=[self])
 
     def __setitem__(self, index, value):
-        super(NestedList, self).__setitem__(index, self.__convert_child__(value))
+        cval = self.__convert_child__(value)
+        if isinstance(index, tuple):
+            return setDeepSimple(self, *index, cval)
+        else:
+            super(NestedList, self).__setitem__(index, cval)
+
         modify_info = {
             "type": type(self),
             "mode": "setitem",
@@ -466,9 +509,12 @@ class SioBase(ChildConverter):
         *keysAndValue,
         expandMapping : typing.Union[
             type, typing.List[typing.Tuple[typing.Type, int]], typing.Dict[str, typing.Type]
-        ] = dict
+        ] = None
     ):
         with self.saveLock():
+            if expandMapping is None:
+                return setDeepSimple(self, *keysAndValue)
+
             setDeep(self, *keysAndValue, expandMapping=expandMapping)
 
     def getDeep(
