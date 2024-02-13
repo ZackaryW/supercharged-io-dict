@@ -223,7 +223,7 @@ class NestedDict(dict, ChildConverter, ParentCaller, DictUpdater):
             if isinstance(key, tuple):
                 key = key[0]
 
-            return super().__getitem__(self, key)
+            return super().__getitem__(key)
 
     def __setitem__(self, index, value):
         cval = self.__convert_child__(value)

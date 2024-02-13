@@ -3,7 +3,7 @@ from setuptools import setup
 setup(
     name="sioDict",
     description="Super Charged Io Dicts",
-    version="0.3.3",
+    version="0.4.1",
     packages=["sioDict", "sioDict.variants"],
     license="MIT",
     long_description=open("README.md").read(),
