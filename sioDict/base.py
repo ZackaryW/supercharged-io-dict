@@ -31,7 +31,7 @@ The following modifications are made
 - removed stringfy by introducing orjson.dumps
 - removed and optimized some recurisive overhead
 """
-
+_placeholderObj = object()
 from contextlib import contextmanager
 import os
 import typing
@@ -217,10 +217,13 @@ class NestedDict(dict, ChildConverter, ParentCaller, DictUpdater):
         ParentCaller.__init__(self, parent, call_to_parent)
 
     def __getitem__(self, *key):
-        if isinstance(key, tuple):
+        if isinstance(key, tuple) and len(key) > 1: 
             return getDeep(self, *key,  options=ExtOptions.raiseOnError)
         else:
-            return super().__getitem__(key)
+            if isinstance(key, tuple):
+                key = key[0]
+
+            return super().__getitem__(self, key)
 
     def __setitem__(self, index, value):
         cval = self.__convert_child__(value)
@@ -294,11 +297,16 @@ class NestedList(list, ChildConverter, ParentCaller):
     def __init__(self, parent, call_to_parent):
         ParentCaller.__init__(self, parent, call_to_parent)
 
+    def get(self, *key, default=None):
+        return getDeep(self, *key, default=default)
+
     def __getitem__(self, *key):
-        if isinstance(key, tuple):
+        if isinstance(key, tuple) and len(key) > 1:
             return getDeep(self, *key,  options=ExtOptions.raiseOnError)
         else:
-            return super().__getitem__(key)
+            if isinstance(key, tuple):
+                key = key[0]
+            return list.__getitem__(self, key)
 
     def __add__(self, item):
         super(NestedList, self).__add__(item)
@@ -567,9 +575,11 @@ class SioBaseDict(dict, SioBase, DictUpdater):
 
     def __setitem__(self, key, val):
         cval = self.__convert_child__(val)
-        if isinstance(key, tuple):
+        if isinstance(key, tuple) and len(key) > 1:
             return setDeepSimple(self, *key, cval)
         else:
+            if isinstance(key, tuple):
+                key = key[0]
             super(SioBaseDict, self).__setitem__(key, cval)
 
         if hasattr(self, 'callback') and self.callback:
